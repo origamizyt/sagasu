@@ -1,0 +1,12 @@
+* {
+    font-family: 'Inter', serif;
+}
+
+html, body {
+    margin: 0;
+}
+
+.container {
+    height: 100vh;
+    display: flex;
+}
