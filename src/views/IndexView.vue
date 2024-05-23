@@ -216,9 +216,8 @@ function onSelect(key: any) {
 async function update() {
   try {
     const result = await backend.tree(...path.value);
-    if (!result.ok) return;
-    files.value = result.data.files.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-    dirs.value = result.data.dirs.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    files.value = result.files.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    dirs.value = result.dirs.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
   } catch (e) {
     if (e === 500) {
       message.error('服务器内部错误。');

@@ -51,6 +51,47 @@ func NewServer(root string) Server {
         app.StaticFileFS("/" + name, "dist/" + name, fs)
     }
 
+    getAbsPath := func (c *gin.Context, parts []string, minFlag string, checkExists bool) (bool, string) {
+        t := tree
+        if len(parts) > 0 {
+            for _, segment := range parts[:len(parts)-1] {
+                t = t.Next(segment)
+                if t == nil {
+                    c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
+                        "ok": false,
+                        "error": segment,
+                    })
+                    return false, ""
+                }
+            }
+        }
+        flag, _ := t.FlagOf(parts[len(parts)-1])
+        if checkExists && flag <= Flags.Find("invisible") && !cfg().Tree.ShowHidden {
+            c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
+                "ok": false,
+                "error": parts[len(parts)-1],
+            })
+            return false, ""
+        } else if flag < Flags.Find(minFlag) {
+            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
+                "ok": false,
+            })
+            return false, ""
+        }
+        loc, _ := filepath.Abs(filepath.Join(t.AbsPath(), parts[len(parts)-1]))
+        if checkExists {
+            _, err := os.Stat(loc)
+            if err != nil {
+                c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
+                    "ok": false,
+                    "error": parts[len(parts)-1],
+                })
+                return false, ""
+            }
+        }
+        return true, loc
+    }
+
     app.GET("/", func (c *gin.Context) {
         c.FileFromFS("dist/", fs)
     })
@@ -63,7 +104,7 @@ func NewServer(root string) Server {
             for _, segment := range strings.Split(path, "/") {
                 t = t.Next(segment)
                 if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
+                    c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
                         "ok": false,
                         "error": segment,
                     })
@@ -75,7 +116,6 @@ func NewServer(root string) Server {
         if err != nil {
             c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H {
                 "ok": false,
-                "error": err.Error(),
             })
             return
         }
@@ -91,9 +131,12 @@ func NewServer(root string) Server {
     app.GET("/fileicon/*path", func (c *gin.Context) {
         path := c.Param("path")
         path, _ = strings.CutPrefix(path, "/")
-        path = strings.ReplaceAll(path, "/", "\\")
-        path, _ = filepath.Abs(filepath.Join(tree.Path, path))
-        assoc, err := GetAssoc(path)
+        parts := strings.Split(path, "/")
+        ok, loc := getAbsPath(c, parts, "visible", true)
+        if !ok {
+            return
+        }
+        assoc, err := GetAssoc(loc)
         if err != nil {
             c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H {
                 "ok": false,
@@ -116,44 +159,12 @@ func NewServer(root string) Server {
     })
 
     app.GET("/file/*path", func (c *gin.Context) {
-        path := c.Param("path")
         download := c.Query("download")
+        path := c.Param("path")
         path, _ = strings.CutPrefix(path, "/")
         parts := strings.Split(path, "/")
-        t := tree
-        if len(path) > 0 {
-            for _, segment := range parts[:len(parts)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        loc := filepath.Join(t.AbsPath(), parts[len(parts)-1])
-        _, err := os.Stat(loc)
-        if err != nil {
-            c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
-                "ok": false,
-                "error": parts[len(parts)-1],
-            })
-            return
-        }
-        flag, _ := t.FlagOf(parts[len(parts)-1])
-        if flag <= Flags.Find("invisible") && !cfg().Tree.ShowHidden {
-            c.AbortWithStatusJSON(http.StatusNotFound, gin.H {
-                "ok": false,
-                "error": parts[len(parts)-1],
-            })
-            return
-        } else if flag <= Flags.Find("visible") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": parts[len(parts)-1],
-            })
+        ok, loc := getAbsPath(c, parts, "visible", true)
+        if !ok {
             return
         }
         if download == "true" {
@@ -166,28 +177,10 @@ func NewServer(root string) Server {
         path := c.Param("path")
         path, _ = strings.CutPrefix(path, "/")
         parts := strings.Split(path, "/")
-        t := tree
-        if len(path) > 0 {
-            for _, segment := range parts[:len(parts)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ := t.FlagOf(parts[len(parts)-1])
-        if flag < Flags.Find("readwrite") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": parts[len(parts)-1],
-            })
+        ok, loc := getAbsPath(c, parts, "readwrite", false)
+        if !ok {
             return
         }
-        loc := filepath.Join(t.AbsPath(), parts[len(parts)-1])
         conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
         if err != nil {
             c.AbortWithStatus(http.StatusBadRequest)
@@ -277,51 +270,15 @@ func NewServer(root string) Server {
         err := c.BindJSON(&body)
         if err != nil { return }
         
-        t := tree
-        if len(body.From) > 1 {
-            for _, segment := range body.From[:len(body.From)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ := t.FlagOf(body.From[len(body.From)-1])
-        if flag < Flags.Find("readwrite") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": body.From[len(body.From)-1],
-            })
+        ok, from_loc := getAbsPath(c, body.From, "readwrite", true)
+        if !ok {
             return
         }
-        from_loc := filepath.Join(t.AbsPath(), body.From[len(body.From)-1])
 
-        t = tree
-        if len(body.To) > 1 {
-            for _, segment := range body.To[:len(body.To)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ = t.FlagOf(body.To[len(body.To)-1])
-        if flag < Flags.Find("readwrite") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": body.To[len(body.To)-1],
-            })
+        ok, to_loc := getAbsPath(c, body.To, "readwrite", false)
+        if !ok {
             return
         }
-        to_loc := filepath.Join(t.AbsPath(), body.To[len(body.To)-1])
 
         err = os.Rename(from_loc, to_loc)
 
@@ -345,51 +302,15 @@ func NewServer(root string) Server {
         err := c.BindJSON(&body)
         if err != nil { return }
         
-        t := tree
-        if len(body.From) > 1 {
-            for _, segment := range body.From[:len(body.From)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ := t.FlagOf(body.From[len(body.From)-1])
-        if flag < Flags.Find("readonly") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": body.From[len(body.From)-1],
-            })
+        ok, from_loc := getAbsPath(c, body.From, "readwrite", true)
+        if !ok {
             return
         }
-        from_loc := filepath.Join(t.AbsPath(), body.From[len(body.From)-1])
 
-        t = tree
-        if len(body.To) > 1 {
-            for _, segment := range body.To[:len(body.To)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ = t.FlagOf(body.To[len(body.To)-1])
-        if flag < Flags.Find("readwrite") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": body.To[len(body.To)-1],
-            })
+        ok, to_loc := getAbsPath(c, body.To, "readwrite", false)
+        if !ok {
             return
         }
-        to_loc := filepath.Join(t.AbsPath(), body.To[len(body.To)-1])
 
         src, err := os.Open(from_loc)
         if err != nil {
@@ -425,29 +346,10 @@ func NewServer(root string) Server {
         path := c.Param("path")
         path, _ = strings.CutPrefix(path, "/")
         parts := strings.Split(path, "/")
-        t := tree
-        if len(path) > 0 {
-            for _, segment := range parts[:len(parts)-1] {
-                t = t.Next(segment)
-                if t == nil {
-                    c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                        "ok": false,
-                        "error": segment,
-                    })
-                    return
-                }
-            }
-        }
-        flag, _ := t.FlagOf(parts[len(parts)-1])
-        if flag < Flags.Find("readwrite") {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H {
-                "ok": false,
-                "error": parts[len(parts)-1],
-            })
+        ok, loc := getAbsPath(c, parts, "readwrite", true)
+        if !ok {
             return
         }
-
-        loc := filepath.Join(t.AbsPath(), parts[len(parts)-1])
         err := os.Remove(loc)
         if err != nil {
             c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H {

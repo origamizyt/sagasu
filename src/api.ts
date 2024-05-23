@@ -27,18 +27,10 @@ export interface FileItem extends DirItem {
     assoc: string
 }
 
-export type Result<T> = {
-    ok: true,
-    data: T
-} | {
-    ok: false,
-    error?: string
-}
-
-export type TreeResult = Result<{ 
+export type TreeResult = { 
     files: FileItem[], 
     dirs: DirItem[] 
-}>
+};
 
 export type Progress = (index: number, total: number) => void;
 
@@ -72,9 +64,9 @@ const backend: Backend = {
         if (resp.status !== 200) {
             throw resp.status;
         }
-        const data = await resp.json();
-        data.data.files = data.data.files.map((f: any) => ({ ...f, time: new Date(f.time)}));
-        data.data.dirs = data.data.dirs.map((f: any) => ({ ...f, time: new Date(f.time)}));
+        const data = (await resp.json()).data;
+        data.files = data.files.map((f: any) => ({ ...f, time: new Date(f.time)}));
+        data.dirs = data.dirs.map((f: any) => ({ ...f, time: new Date(f.time)}));
         return data;
     },
     iconSrc(...path) {
