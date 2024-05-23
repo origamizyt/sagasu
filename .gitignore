@@ -29,6 +29,7 @@ coverage
 
 *.tsbuildinfo
 
+.archives
 *.syso
 *.exe
 src-go/assets.go
