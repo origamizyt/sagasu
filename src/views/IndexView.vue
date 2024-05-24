@@ -451,7 +451,7 @@ const overlapsFile = computed(() => {
               <i class="ri ri-refresh-line"></i>
             </NButton>
           </div>
-          <NBreadcrumb separator="&gt;">
+          <NBreadcrumb separator="&gt;" class="lg-only">
             <NBreadcrumbItem @click="to([])">
               <div class="breadcrumb-item-wrapper">
                 <i class="ri-home-2-fill"></i>
@@ -464,6 +464,9 @@ const overlapsFile = computed(() => {
               </div>
             </NBreadcrumbItem>
           </NBreadcrumb>
+          <div class="sm-only" v-if="path.length > 0">
+            <i class="ri-folder-6-fill"></i> {{ path.slice(-1)[0] }}
+          </div>
           <div class="fileop-indicator" v-if="fileOp.from">
             正在{{ fileOp.move ? "移动" : "复制" }}
             {{ fileOp.from.join('\\') }}
@@ -471,7 +474,7 @@ const overlapsFile = computed(() => {
         </div>
       </NLayoutHeader>
       <NLayoutContent>
-        <NSpace :wrap-item="false" style="height: 100%">
+        <NSpace :wrap-item="false" style="height: 100%" :wrap="false">
           <div class="toolbar">
             <NSpace vertical>
               <NButton quaternary @click="onSelect('move')" :disabled="!isFile || activeItem!.flag < Flag.READWRITE">
@@ -726,5 +729,23 @@ const overlapsFile = computed(() => {
   text-align: center;
   color: #909399;
   font-size: 12px;
+}
+
+@media (max-width: 767px) {
+  .lg-only {
+    display: none;
+  }
+  .item > :not(.name) {
+    display: none !important;
+  }
+  .item > .name {
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .sm-only {
+    display: none;
+  }
 }
 </style>

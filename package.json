@@ -1,6 +1,6 @@
 {
   "name": "sagasu",
-  "version": "0.1.0-beta",
+  "version": "0.1.1-beta",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build --force",
-    "godev": "cd src-go && go run sagasu serve",
+    "godev": "cd src-go && go run sagasu serve -host 127.0.0.1",
     "gobuild": "cd src-go && go generate && go build"
   },
   "dependencies": {
